@@ -1,0 +1,25 @@
+name = "esp32-remote-control"
+main = "src/worker.js"
+compatibility_date = "2026-07-29"
+
+[assets]
+directory = "./web"
+
+[vars]
+# Base URL of the EMQX Cloud deployment's HTTP API (not secret, just a host).
+EMQX_API_BASE = "https://c89d81bf.ala.asia-southeast1.emqxsl.com:8443/api/v5"
+EMQX_COMMAND_TOPIC = "esp32/command"
+
+[[durable_objects.bindings]]
+name = "STATE"
+class_name = "StateStore"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["StateStore"]
+
+# Secrets (set via `wrangler secret put <NAME>`, not stored here):
+#   EMQX_API_KEY       - EMQX Cloud deployment API key (App ID)
+#   EMQX_API_SECRET     - EMQX Cloud deployment API secret
+#   EMQX_WEBHOOK_TOKEN  - shared token the EMQX Rule Engine webhook must send
+#   DASHBOARD_PIN       - existing dashboard auth pin

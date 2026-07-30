@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+    <title>ESP32 Control</title>
+    <link rel="icon" href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>%F0%9F%92%A1</text></svg>">
+    <link rel="stylesheet" href="style.css">
+  </head>
+  <body>
+    <div class="app">
+      <header class="topbar">
+        <div class="topbar-row">
+          <div class="brand">
+            <p class="eyebrow" data-i18n="eyebrow">Remote control</p>
+            <h1 data-i18n="title">ESP32 Panel</h1>
+          </div>
+          <button id="lang-toggle" class="lang-btn" type="button" aria-label="Switch language">
+            <span aria-hidden="true">&#127760;</span>
+            <span id="lang-current">ENG</span>
+          </button>
+        </div>
+        <div class="sensorbar-wrap">
+          <div class="sensorbar is-offline" aria-hidden="true">
+            <div class="sensorbar-block">
+              <span class="sensorbar-label" data-i18n="sensors.temp">Temp:</span>
+              <span class="sensorbar-value" id="sensor-temp">--</span>
+            </div>
+            <div class="sensorbar-block">
+              <span class="sensorbar-label" data-i18n="sensors.hum">Hum:</span>
+              <span class="sensorbar-value" id="sensor-hum">--</span>
+            </div>
+            <div class="sensorbar-block">
+              <span class="sensorbar-label" data-i18n="sensors.light">Light:</span>
+              <span class="sensorbar-value" id="sensor-light">--</span>
+            </div>
+          </div>
+          <span id="sensor-offline-badge" class="offline-badge" data-i18n="status.offlineBadge">Offline</span>
+        </div>
+        <div class="livebar-wrap">
+          <div class="livebar is-offline" aria-hidden="true">
+          <div class="livebar-block livebar-leds">
+            <span class="state-led" id="state-led-0"></span>
+            <span class="state-led" id="state-led-1"></span>
+            <span class="state-led" id="state-led-2"></span>
+          </div>
+          <div class="livebar-block livebar-servo">
+            <svg viewBox="0 0 40 24" class="state-servo-mini">
+              <path d="M4 20 A16 16 0 0 1 36 20" fill="none" stroke="rgba(255,255,255,.15)" stroke-width="3" stroke-linecap="round"/>
+              <g id="state-servo-needle" style="transform-origin: 20px 20px;">
+                <line x1="20" y1="20" x2="20" y2="7" stroke="#f1f5f9" stroke-width="2.5" stroke-linecap="round"/>
+              </g>
+              <circle cx="20" cy="20" r="2.2" fill="#f1f5f9"/>
+            </svg>
+            <span id="state-servo-angle" class="livebar-label">&ndash;</span>
+          </div>
+          <div class="livebar-block livebar-sound" id="state-sound">
+            <div class="eq">
+              <span class="eq-bar"></span><span class="eq-bar"></span><span class="eq-bar"></span>
+            </div>
+            <span id="state-song-name" class="livebar-label"></span>
+          </div>
+          </div>
+          <span id="offline-badge" class="offline-badge" data-i18n="status.offlineBadge">Offline</span>
+        </div>
+        <div id="status" class="status status--idle" role="status">
+          <span class="status-dot"></span>
+          <span class="status-text">Ready</span>
+        </div>
+      </header>
+
+      <nav class="tabs" role="tablist" aria-label="Control sections">
+        <button class="tab active" data-tab="lights" role="tab" aria-selected="true" data-i18n="tabs.lights">Lights</button>
+        <button class="tab" data-tab="servo" role="tab" aria-selected="false" data-i18n="tabs.servo">Servo</button>
+        <button class="tab" data-tab="sound" role="tab" aria-selected="false" data-i18n="tabs.sound">Sound</button>
+        <button class="tab" data-tab="songs" role="tab" aria-selected="false" data-i18n="tabs.songs">Songs</button>
+      </nav>
+
+      <main>
+        <section class="panel active" data-panel="lights">
+          <div class="card">
+            <h2 data-i18n="lights.target">Target</h2>
+            <div class="segmented" id="led-target">
+              <button class="segmented-option active" data-led="-1" data-i18n="lights.all">All</button>
+              <button class="segmented-option" data-led="0" data-i18n="lights.led1">LED 1</button>
+              <button class="segmented-option" data-led="1" data-i18n="lights.led2">LED 2</button>
+              <button class="segmented-option" data-led="2" data-i18n="lights.led3">LED 3</button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 data-i18n="lights.color">Color</h2>
+            <div class="color-picker-row">
+              <div class="color-wheel-wrap">
+                <div class="color-wheel-inner">
+                  <canvas id="color-wheel" width="180" height="180" aria-label="Color wheel"></canvas>
+                  <div id="color-wheel-pointer" class="color-wheel-pointer"></div>
+                </div>
+                <p class="hint" data-i18n="lights.colorWheel">Color wheel</p>
+              </div>
+              <div class="brightness-wrap">
+                <input id="brightness" class="brightness-slider" type="range" min="0" max="100" value="100">
+                <p class="hint" data-i18n="lights.brightness">Brightness</p>
+              </div>
+              <div class="color-actions">
+                <button class="btn btn--ghost" id="random-btn" data-i18n="lights.random">Random colors</button>
+                <button class="btn btn--muted" id="off-btn" data-i18n="lights.off">Turn off</button>
+              </div>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 data-i18n="lights.duration">Duration</h2>
+            <label class="field">
+              <div class="field-label"><span data-i18n="lights.lightingTime">Lighting time</span><output id="duration-value" class="badge">Stay on</output></div>
+              <input id="duration" type="range" min="0" max="60" value="5">
+            </label>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="servo" hidden>
+          <nav class="subtabs" role="tablist" aria-label="Servo sections">
+            <button class="subtab active" data-subtab="angle" role="tab" aria-selected="true" data-i18n="servo.angle">Angle</button>
+            <button class="subtab" data-subtab="sweep" role="tab" aria-selected="false" data-i18n="servo.sweep">Sweep</button>
+            <button class="subtab" data-subtab="strike" role="tab" aria-selected="false" data-i18n="servo.strike">Strike</button>
+          </nav>
+
+          <div class="subpanel active" data-subpanel="angle">
+            <div class="card">
+              <div class="dial-wrap">
+                <svg class="dial" viewBox="0 0 200 110" aria-hidden="true">
+                  <path d="M10 100 A90 90 0 0 1 190 100" fill="none" stroke="rgba(255,255,255,.12)" stroke-width="10" stroke-linecap="round"/>
+                  <path id="dial-fill" d="M10 100 A90 90 0 0 1 190 100" fill="none" stroke="url(#dialGrad)" stroke-width="10" stroke-linecap="round"/>
+                  <path id="dial-hit" d="M10 100 A90 90 0 0 1 190 100" fill="none" stroke="transparent" stroke-width="46" stroke-linecap="round"/>
+                  <defs>
+                    <linearGradient id="dialGrad" x1="0" y1="0" x2="1" y2="0">
+                      <stop offset="0" stop-color="#6366f1"/>
+                      <stop offset="1" stop-color="#a855f7"/>
+                    </linearGradient>
+                  </defs>
+                  <g id="dial-needle" style="transform-origin: 100px 100px;">
+                    <line x1="100" y1="100" x2="100" y2="24" stroke="#f1f5f9" stroke-width="4" stroke-linecap="round"/>
+                  </g>
+                  <circle cx="100" cy="100" r="7" fill="#f1f5f9"/>
+                </svg>
+              </div>
+              <output id="servo-angle-value" class="dial-value">90°</output>
+              <input id="servo-angle" type="range" min="0" max="180" value="90">
+              <button class="btn btn--primary" id="servo-send" data-i18n="servo.move">Move servo</button>
+              <p class="hint" data-i18n="servo.hintMove">Moves the servo to the chosen angle. Larger servos may need extra power to move smoothly.</p>
+            </div>
+          </div>
+
+          <div class="subpanel" data-subpanel="sweep" hidden>
+            <div class="card">
+              <p class="hint" data-i18n="servo.hintSweep">Rocks back and forth between two angles in fixed steps.</p>
+              <div class="dual-range">
+                <div class="dual-range-track"><div class="dual-range-fill" id="sweep-fill"></div></div>
+                <input type="range" id="sweep-from" min="0" max="180" value="180">
+                <input type="range" id="sweep-to" min="0" max="180" value="0">
+              </div>
+              <div class="dual-range-labels">
+                <span><span data-i18n="servo.from">From</span> <output id="sweep-from-value">180°</output></span>
+                <span><span data-i18n="servo.to">To</span> <output id="sweep-to-value">0°</output></span>
+              </div>
+              <div class="field-grid">
+                <label class="field"><div class="field-label"><span data-i18n="servo.step">Step</span><output id="sweep-step-value" class="badge">6°</output></div><input id="sweep-step" type="range" min="1" max="45" value="6"></label>
+                <label class="field"><div class="field-label"><span data-i18n="servo.speed">Speed</span><output id="sweep-interval-value" class="badge">2000 ms</output></div><input id="sweep-interval" type="range" min="100" max="5000" step="100" value="2000"></label>
+                <label class="field"><div class="field-label"><span data-i18n="servo.passes">Passes</span><output id="sweep-passes-value" class="badge">1</output></div><input id="sweep-passes" type="range" min="-1" max="10" value="1"></label>
+              </div>
+              <small class="hint" data-i18n="servo.hintPasses">Passes: -1 repeats forever until another command is sent.</small>
+              <button class="btn btn--primary" id="sweep-send" data-i18n="servo.startSweep">Start sweep</button>
+            </div>
+          </div>
+
+          <div class="subpanel" data-subpanel="strike" hidden>
+            <div class="card">
+              <p class="hint" data-i18n="servo.hintStrike">Snaps between two angles like a hammer, a set number of times.</p>
+              <div class="dual-range">
+                <div class="dual-range-track"><div class="dual-range-fill" id="strike-fill"></div></div>
+                <input type="range" id="strike-low" min="0" max="180" value="0">
+                <input type="range" id="strike-high" min="0" max="180" value="180">
+              </div>
+              <div class="dual-range-labels">
+                <span><span data-i18n="servo.low">Low</span> <output id="strike-low-value">0°</output></span>
+                <span><span data-i18n="servo.high">High</span> <output id="strike-high-value">180°</output></span>
+              </div>
+              <div class="field-grid">
+                <label class="field"><div class="field-label"><span data-i18n="servo.speed">Speed</span><output id="strike-interval-value" class="badge">200 ms</output></div><input id="strike-interval" type="range" min="50" max="1000" step="50" value="200"></label>
+                <label class="field"><div class="field-label"><span data-i18n="servo.times">Times</span><output id="strike-times-value" class="badge">10</output></div><input id="strike-times" type="range" min="1" max="50" value="10"></label>
+              </div>
+              <button class="btn btn--primary" id="strike-send" data-i18n="servo.startStrike">Start strike</button>
+            </div>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="sound" hidden>
+          <div class="card">
+            <h2 data-i18n="sound.tone">Tone</h2>
+            <label class="field"><div class="field-label"><span data-i18n="sound.frequency">Frequency</span><output id="sound-frequency-value" class="badge">1000 Hz</output></div><input id="sound-frequency" type="range" min="100" max="5000" step="50" value="1000"></label>
+            <label class="field"><div class="field-label"><span data-i18n="sound.length">Length</span><output id="sound-duration-value" class="badge">250 ms</output></div><input id="sound-duration" type="range" min="50" max="2000" step="50" value="250"></label>
+            <div class="chip-row">
+              <button class="chip" data-preset-freq="1000" data-preset-dur="150" data-i18n="sound.beep">Beep</button>
+              <button class="chip" data-preset-freq="2800" data-preset-dur="400" data-i18n="sound.alert">Alert</button>
+              <button class="chip" data-preset-freq="600" data-preset-dur="700" data-i18n="sound.chime">Chime</button>
+            </div>
+            <button class="btn btn--primary" id="sound-send" data-i18n="sound.play">Play sound</button>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="songs" hidden>
+          <div class="card song-list">
+            <button class="song-card" data-song="perfect" style="--dot:#ffb347">
+              <span class="song-dot"></span>
+              <span class="song-info"><strong>Perfect</strong><small>Ed Sheeran</small></span>
+              <span class="song-play" aria-hidden="true">&#9654;</span>
+            </button>
+            <button class="song-card" data-song="twinkle" style="--dot:#93c5fd">
+              <span class="song-dot"></span>
+              <span class="song-info"><strong>Twinkle Twinkle Little Star</strong><small>Traditional</small></span>
+              <span class="song-play" aria-hidden="true">&#9654;</span>
+            </button>
+            <button class="song-card" data-song="birthday" style="--dot:#f87171">
+              <span class="song-dot"></span>
+              <span class="song-info"><strong>Happy Birthday</strong><small>Traditional</small></span>
+              <span class="song-play" aria-hidden="true">&#9654;</span>
+            </button>
+            <button class="song-card" data-song="fur_elise" style="--dot:#c084fc">
+              <span class="song-dot"></span>
+              <span class="song-info"><strong>Für Elise</strong><small>Beethoven</small></span>
+              <span class="song-play" aria-hidden="true">&#9654;</span>
+            </button>
+            <button class="song-card" data-song="mario" style="--dot:#4ade80">
+              <span class="song-dot"></span>
+              <span class="song-info"><strong>Super Mario Bros Theme</strong><small>Nintendo</small></span>
+              <span class="song-play" aria-hidden="true">&#9654;</span>
+            </button>
+            <small class="hint" data-i18n="songs.hint">Each plays a short buzzer melody with LEDs synced to it.</small>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <dialog id="pin-modal">
+      <form method="dialog" id="pin-form">
+        <h2 data-i18n="pin.title">Enter PIN</h2>
+        <p class="hint" data-i18n="pin.hint">6-digit dashboard PIN. Kept only in this browser tab.</p>
+        <input id="pin-input" inputmode="numeric" pattern="[0-9]*" maxlength="6" autocomplete="off" placeholder="&bull;&bull;&bull;&bull;&bull;&bull;">
+        <div class="dialog-actions">
+          <button type="submit" class="btn btn--primary" id="pin-submit" data-i18n="pin.unlock">Unlock</button>
+        </div>
+      </form>
+    </dialog>
+
+    <script src="app.js"></script>
+  </body>
+</html>
