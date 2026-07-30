@@ -1,5 +1,7 @@
 # Full Control on ESP
 
+**[Open the control page](https://esp32-remote-control.kd1454812.workers.dev)**
+
 Remote control and live environment monitoring for a **MicroFan ESP32-C3M-TRY (4 MB)** board. A web dashboard sends commands through a Cloudflare Worker to an **EMQX Cloud MQTT broker**; the ESP32 stays subscribed over MQTT and reacts instantly, while continuously publishing its own state (LEDs, servo, sound, sensors) back for the dashboard to display live.
 
 The board only needs USB for power after the firmware has been uploaded. The dashboard can be opened on a phone or computer from anywhere with Internet access — no router port forwarding required.
