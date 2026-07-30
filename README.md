@@ -1,107 +1,107 @@
-# Full Control on ESP
+# Full Control on ESP（日本語版）
 
-**[Open the control page](https://esp32-remote-control.kd1454812.workers.dev)**
+**[English version](README.en.md)** | **[コントロールページを開く](https://esp32-remote-control.kd1454812.workers.dev)**
 
-Remote control and live environment monitoring for a **MicroFan ESP32-C3M-TRY (4 MB)** board. A web dashboard sends commands through a Cloudflare Worker to an **EMQX Cloud MQTT broker**; the ESP32 stays subscribed over MQTT and reacts instantly, while continuously publishing its own state (LEDs, servo, sound, sensors) back for the dashboard to display live.
+**MicroFan ESP32-C3M-TRY（4 MB）** ボード向けの、リモート操作とライブ環境モニタリングのプロジェクトです。Web ダッシュボードから送信されたコマンドは Cloudflare Worker を経由して **EMQX Cloud の MQTT ブローカー** に送られます。ESP32 は常時 MQTT に接続しており、コマンドを即座に反映するとともに、自身の状態（LED、サーボ、音、センサー）を継続的に配信し、ダッシュボードにリアルタイムで表示します。
 
-The board only needs USB for power after the firmware has been uploaded. The dashboard can be opened on a phone or computer from anywhere with Internet access — no router port forwarding required.
+ファームウェアの書き込み後は、ボードは電源供給に USB があれば十分です。ダッシュボードはインターネットに接続されたスマートフォンや PC からどこからでも開くことができます。ルーターのポート開放は不要です。
 
-## What this project does
+## このプロジェクトができること
 
-- Connects the ESP32-C3M-TRY to a 2.4 GHz Wi-Fi network and to an EMQX Cloud MQTT broker over TLS.
-- Full-spectrum LED control via a color wheel + brightness slider (not just fixed colors), applied to all three NeoPixels or one at a time, with optional timed auto-off.
-- "Random colors" mode and an instant "Turn off" for all LEDs.
-- Servo control: direct angle (0–180°), a back-and-forth sweep pattern, and a hammer-style strike pattern.
-- Plays a custom tone or one of five built-in songs (with LEDs synced to the melody) through the piezo sounder.
-- Onboard SSD1306 OLED display shows live temperature/humidity (AHT21) and ambient brightness (phototransistor), independent of Wi-Fi/MQTT status.
-- The web dashboard mirrors the board's live state (LED colors, servo angle, sound/song, sensor readings) in real time, without needing the PIN — only sending commands requires the PIN.
-- Bilingual dashboard UI (English / Japanese, toggle in the top bar).
-- No router port forwarding, no public inbound ports on the ESP32 — it only makes outbound connections.
+- ESP32-C3M-TRY を 2.4 GHz の Wi-Fi ネットワークに接続し、TLS 経由で EMQX Cloud の MQTT ブローカーに接続します。
+- カラーホイールと明るさスライダーによるフルカラーの LED 制御（固定色だけでなく任意の色を指定可能）。全 LED または個別の LED を対象にでき、時間指定での自動消灯にも対応します。
+- 「ランダムカラー」モードと、全 LED を即座に消灯する「消灯」ボタン。
+- サーボ制御：直接角度指定（0～180°）、往復するスイープパターン、ハンマーのように打撃するストライクパターン。
+- 圧電スピーカーで任意のトーン、またはメロディーに合わせて LED が光る内蔵の 5 曲を再生。
+- 基板上の SSD1306 OLED ディスプレイに、Wi-Fi/MQTT の状態とは独立して、気温・湿度（AHT21）と周囲の明るさ（フォトトランジスタ）をリアルタイム表示。
+- Web ダッシュボードはボードの現在の状態（LED の色、サーボ角度、音・曲、センサー値）をリアルタイムに表示します。閲覧に PIN は不要で、コマンドの送信のみ PIN が必要です。
+- 日本語・英語のバイリンガル UI（画面上部のボタンで切り替え）。
+- ルーターのポート開放は不要で、ESP32 側に外部からアクセス可能なポートは一切ありません（すべて ESP32 からの発信接続のみ）。
 
-## Hardware
+## ハードウェア
 
-| Board part | ESP32-C3 GPIO | Notes |
+| 基板の部品 | ESP32-C3 の GPIO | 備考 |
 | --- | ---: | --- |
-| Three WS2812 RGB LEDs (LED10–LED12) | 10 | One data pin drives all three LEDs as a chain. |
-| Piezo speaker (SOUNDER) | 21 | Driven via PWM/`ledcWriteTone`; held silent unless a sound/song command is active. |
-| Servo connector CN3 | 7 | Servo signal pin; CN3 also provides 5 V and GND. |
-| OLED display + I2C bus | SDA 8 / SCL 9 | Shared I2C bus with the AHT21 temp/humidity sensor; SSD1306, 128×64, address `0x3C`. |
-| Phototransistor (brightness) | 1 | Read via ADC (`analogRead`), normalized to 0–1. |
-| Built-in monochrome LED (LED1) | 0 | Not currently used by the firmware. |
-| SW1 / SW2 / SW3 | 2 / 3 / 6 | Active-low buttons; not currently read by the firmware. |
-| SW4 / BOOT | 9 | Shared with I2C SCL — do not repurpose as a general input while I2C is in use. |
+| WS2812 カラー LED 3 個（LED10～LED12） | 10 | 1 本の信号線で 3 個の LED をチェーン接続で制御します。 |
+| 圧電スピーカー（SOUNDER） | 21 | PWM（`ledcWriteTone`）で駆動。音・曲コマンド実行中以外は無音を維持します。 |
+| サーボコネクタ CN3 | 7 | サーボの信号線。CN3 には 5V と GND も供給されます。 |
+| OLED ディスプレイ + I2C バス | SDA 8 / SCL 9 | AHT21 温湿度センサーと共用の I2C バス。SSD1306、128×64、アドレス `0x3C`。 |
+| フォトトランジスタ（明るさセンサー） | 1 | ADC（`analogRead`）で読み取り、0～1 に正規化します。 |
+| 内蔵の単色 LED（LED1） | 0 | 現在のファームウェアでは未使用です。 |
+| SW1 / SW2 / SW3 | 2 / 3 / 6 | 負論理のボタン。現在のファームウェアでは読み取っていません。 |
+| SW4 / BOOT | 9 | I2C の SCL と共用のため、I2C 使用中は一般的な入力として転用しないでください。 |
 
-## Project layout
+## プロジェクトの構成
 
 ```text
 full control on ESP/
-├── README.md                 This guide (English)
-├── README.ja.md              Japanese version of this guide
-├── platformio.ini            PlatformIO board/build/upload settings
+├── README.md                 このガイド（日本語版）
+├── README.en.md              このガイドの英語版
+├── platformio.ini            PlatformIO のボード／ビルド／書き込み設定
 ├── src/
-│   └── main.cpp              ESP32 Arduino firmware (Wi-Fi, MQTT, LEDs, servo, sound, OLED, sensors)
+│   └── main.cpp              ESP32 の Arduino ファームウェア（Wi-Fi、MQTT、LED、サーボ、音、OLED、センサー）
 └── cloudflare/
-    ├── wrangler.toml         Cloudflare Worker configuration (vars, Durable Object binding)
-    ├── src/worker.js         Command relay + live-state API (Worker + Durable Object)
-    └── web/                  Phone/computer dashboard
+    ├── wrangler.toml         Cloudflare Worker の設定（環境変数、Durable Object バインディング）
+    ├── src/worker.js         コマンド中継とライブ状態 API（Worker + Durable Object）
+    └── web/                  スマートフォン／PC 用ダッシュボード
         ├── index.html
         ├── app.js
         └── style.css
 ```
 
-## How it works
+## 仕組み
 
-**Commands (dashboard → board):**
+**コマンドの流れ（ダッシュボード → ボード）：**
 
 ```text
-Dashboard  ──POST /api/command (PIN required)──▶  Cloudflare Worker
-                                                        │  validates + publishes (retained, QoS 1)
+ダッシュボード ──POST /api/command（PIN 必須）──▶  Cloudflare Worker
+                                                        │  検証後、EMQX へパブリッシュ（retain 付き、QoS 1）
                                                         ▼
-                                              EMQX Cloud MQTT broker
-                                                        │  topic: esp32/command
+                                              EMQX Cloud の MQTT ブローカー
+                                                        │  トピック: esp32/command
                                                         ▼
-                                        ESP32-C3M-TRY (subscribed over MQTT)
+                                        ESP32-C3M-TRY（MQTT に常時接続）
 ```
 
-Because the ESP32 keeps a live MQTT session open, commands are applied within milliseconds — there is no polling delay. The "retained" flag means a rebooting/reconnecting board immediately receives the last command sent.
+ESP32 は MQTT セッションを常時維持しているため、コマンドはミリ秒単位で即座に反映されます（ポーリングの遅延はありません）。「retain（保持）」フラグにより、再起動・再接続したボードは直前のコマンドを接続直後に受け取ります。
 
-**Live state (board → dashboard):**
+**状態の流れ（ボード → ダッシュボード）：**
 
 ```text
-ESP32-C3M-TRY  ──publishes every ~250ms──▶  EMQX Cloud (topic: esp32/state)
-                                                   │  Rule Engine → Webhook
+ESP32-C3M-TRY  ──約250msごとにパブリッシュ──▶  EMQX Cloud（トピック: esp32/state）
+                                                   │  ルールエンジン → Webhook
                                                    ▼
                                      Cloudflare Worker → Durable Object
-                                                   │  GET /api/state (no PIN needed)
+                                                   │  GET /api/state（PIN 不要）
                                                    ▼
-                                              Dashboard (polls every ~400ms)
+                                              ダッシュボード（約400msごとにポーリング）
 ```
 
-The Durable Object exists because Cloudflare's plain edge cache is per-datacenter — without it, state published from EMQX Cloud's servers and read from a browser's nearest edge could land in different, unsynchronized caches. The Durable Object gives every request a single consistent source of truth.
+Durable Object を使用しているのは、Cloudflare の通常のエッジキャッシュがデータセンターごとに独立しているためです。これがないと、EMQX Cloud のサーバーから書き込まれた状態と、ブラウザに最も近いエッジから読み取られる状態が、別々の同期されていないキャッシュに保存されてしまう可能性があります。Durable Object を使うことで、どのリクエストからも常に同じ一貫したデータを参照できます。
 
-Live state is intentionally readable without the PIN (it's just telemetry — LED colors, servo angle, sound/song, sensor readings). The PIN only guards `/api/command`, so viewing the dashboard never requires unlocking anything, but nothing can be controlled without it.
+ライブ状態（LED の色、サーボ角度、音・曲、センサー値）はテレメトリ（読み取り専用の情報）に過ぎないため、意図的に PIN なしで閲覧できるようにしています。PIN が必要なのは `/api/command`（ボードを操作するすべての操作）のみです。そのため、ダッシュボードを見るだけならロック解除は不要ですが、PIN がなければ何も操作はできません。
 
-## Open the dashboard
+## ダッシュボードを開く
 
-Open the deployed Worker URL in any browser. The live simulation bar and sensor bar populate immediately — no PIN needed to just watch. Tap any control and you'll be asked for the six-digit dashboard PIN once per browser tab/session.
+デプロイした Worker の URL をブラウザで開いてください。ライブシミュレーションバーとセンサーバーはすぐに表示され、閲覧するだけなら PIN は不要です。いずれかの操作をタップすると、そのブラウザタブ・セッションにつき 1 回、6 桁のダッシュボード PIN の入力を求められます。
 
-The dashboard provides:
+ダッシュボードでは以下が行えます：
 
-- **Lights tab:** LED target (all / LED 1 / LED 2 / LED 3), a color wheel + vertical brightness slider for full-spectrum color, a duration slider for timed auto-off, "Random colors", and "Turn off".
-- **Servo tab:** direct angle control (0–180°) via a dial, a Sweep pattern (from/to angle, step size, speed, pass count), and a Strike pattern (low/high angle, speed, times).
-- **Sound tab:** a frequency/duration tone generator with quick presets (Beep, Alert, Chime).
-- **Songs tab:** five short buzzer melodies with LEDs synced to the tune (Perfect, Twinkle Twinkle Little Star, Happy Birthday, Für Elise, Super Mario Bros theme).
-- **Live simulation bar:** mirrors the board's actual LED colors, servo angle, and sound/song activity in real time; shows an "Offline" badge if the board hasn't reported in the last 1.5 seconds.
-- **Sensor bar:** live temperature, humidity, and brightness readings, with the same offline indicator.
-- **Language toggle:** switches the whole UI between English and Japanese.
+- **ライトタブ：** LED の対象（全部／LED 1／LED 2／LED 3）、カラーホイールと縦の明るさスライダーによるフルカラー指定、時間指定の自動消灯用スライダー、「ランダムカラー」、「消灯」。
+- **サーボタブ：** ダイヤルによる直接角度指定（0～180°）、スイープパターン（開始・終了角度、刻み幅、速度、回数）、ストライクパターン（低角度・高角度、速度、回数）。
+- **サウンドタブ：** 周波数・長さを指定できるトーン生成と、ビープ・アラート・チャイムのプリセット。
+- **曲タブ：** LED がメロディーに合わせて光る短いブザー曲 5 曲（Perfect、きらきら星、Happy Birthday、エリーゼのために、スーパーマリオブラザーズのテーマ）。
+- **ライブシミュレーションバー：** ボードの実際の LED の色、サーボ角度、音・曲の再生状況をリアルタイムに表示。直近 1.5 秒以内に報告がない場合は「オフライン」バッジを表示します。
+- **センサーバー：** 気温・湿度・明るさをリアルタイム表示。オフライン表示の仕組みは同じです。
+- **言語切り替え：** UI 全体を英語と日本語で切り替えます。
 
-### Servo wiring
+### サーボの配線
 
-Connect the servo to **CN3**: signal is GPIO 7, with 5 V and GND beside it. Small servos may work from the board's USB power, but larger servos need their own regulated 5 V supply — always connect the external supply ground to the ESP32 ground.
+サーボは **CN3** に接続します。信号線は GPIO 7 で、隣に 5V と GND があります。小型サーボであれば基板の USB 電源で動作することもありますが、大型サーボの場合は別途安定化された 5V 電源が必要です。外部電源を使う場合は、必ず外部電源の GND と ESP32 の GND を接続してください。
 
-## Firmware configuration
+## ファームウェアの設定
 
-In `src/main.cpp`, set these to match your network and EMQX Cloud deployment:
+`src/main.cpp` 内の以下の値を、ご自身のネットワークと EMQX Cloud のデプロイメントに合わせて設定してください。
 
 ```cpp
 const char *wifiName = "YOUR_WIFI_NAME";
@@ -112,105 +112,105 @@ const char *mqttUser = "YOUR_MQTT_USERNAME";
 const char *mqttPassword = "YOUR_MQTT_PASSWORD";
 ```
 
-ESP32-C3 supports 2.4 GHz Wi-Fi only. For a phone hotspot, enable its 2.4 GHz / compatibility mode if the phone offers that option.
+ESP32-C3 は 2.4 GHz の Wi-Fi のみに対応しています。スマートフォンのテザリングを使う場合は、2.4 GHz／互換モードがあれば有効にしてください。
 
-### Status LED colors
+### 状態表示 LED の色
 
-| LED color | Meaning |
+| LED の色 | 意味 |
 | --- | --- |
-| Blue | Connecting to Wi-Fi. |
-| Purple | Wi-Fi connection failed. Check network name, password, and 2.4 GHz compatibility. |
-| Yellow | Wi-Fi is up but the MQTT broker is unreachable. |
-| Requested color / off | Everything is connected; the board is showing the last command it received. |
+| 青 | Wi-Fi に接続中です。 |
+| 紫 | Wi-Fi への接続に失敗しました。ネットワーク名、パスワード、2.4 GHz 対応を確認してください。 |
+| 黄 | Wi-Fi は接続済みですが、MQTT ブローカーに接続できません。 |
+| 指定した色／消灯 | すべて正常に接続されており、最後に受信したコマンドの状態を表示しています。 |
 
-## Build and upload with VS Code
+## VS Code でのビルドと書き込み
 
-1. Open the **full control on ESP** folder in VS Code with the PlatformIO extension.
-2. Plug the board in with USB-C.
-3. In PlatformIO, select the environment `esp32-c3-devkitm-1`.
-4. Choose **Upload** (this also pulls in the required libraries automatically).
-5. After upload completes, the board restarts, connects to Wi-Fi, and connects to the MQTT broker.
+1. PlatformIO 拡張機能をインストールした VS Code で **full control on ESP** フォルダを開きます。
+2. USB-C ケーブルでボードを接続します。
+3. PlatformIO で環境 `esp32-c3-devkitm-1` を選択します。
+4. **Upload（アップロード）** を実行します（必要なライブラリは自動的に取得されます）。
+5. 書き込み完了後、ボードは再起動し、Wi-Fi と MQTT ブローカーに接続します。
 
-Libraries used (declared in `platformio.ini`, installed automatically by PlatformIO):
+使用しているライブラリ（`platformio.ini` に記載、PlatformIO が自動インストール）：
 
-- `adafruit/Adafruit NeoPixel` — the three onboard WS2812 LEDs
-- `madhephaestus/ESP32Servo` — servo control
-- `knolleary/PubSubClient` — MQTT client
-- `adafruit/Adafruit SSD1306` + `adafruit/Adafruit GFX Library` — OLED display
-- `adafruit/Adafruit AHTX0` — AHT21 temperature/humidity sensor
+- `adafruit/Adafruit NeoPixel` — 基板上の WS2812 LED 3 個の制御
+- `madhephaestus/ESP32Servo` — サーボ制御
+- `knolleary/PubSubClient` — MQTT クライアント
+- `adafruit/Adafruit SSD1306` + `adafruit/Adafruit GFX Library` — OLED ディスプレイ
+- `adafruit/Adafruit AHTX0` — AHT21 温湿度センサー
 
-If the serial port changes, update or remove `upload_port` in `platformio.ini`, then pick the detected USB port.
+シリアルポートが変わった場合は、`platformio.ini` の `upload_port` を更新または削除し、検出された USB ポートを選択してください。
 
-### Serial Monitor
+### シリアルモニタ
 
-Use 115200 baud. The firmware prints Wi-Fi connection status, the local IP address, and MQTT connect/disconnect messages.
+ボーレートは 115200 です。ファームウェアは Wi-Fi の接続状況、ローカル IP アドレス、MQTT の接続・切断メッセージを出力します。
 
-## Cloudflare Worker + EMQX Cloud setup
+## Cloudflare Worker と EMQX Cloud の設定
 
-### 1. EMQX Cloud deployment
+### 1. EMQX Cloud のデプロイメント
 
-1. Create a Serverless deployment on [EMQX Cloud](https://www.emqx.com/en/cloud). Note its MQTT host and TLS port (`8883`).
-2. Under **アクセス制御 (Access Control) → 認証 (Authentication)**, create an MQTT username/password for the ESP32.
-3. Under the deployment overview, generate a **deployment API key** (App ID + App Secret) — this is what the Worker uses to publish commands via the HTTP API.
-4. Under **データ統合 (Data Integration)**, create an **HTTP サービス (HTTP Service)** connector pointing at your Worker's `/api/state/mqtt` endpoint (with TLS enabled, and a custom header carrying a shared secret token), then a rule with SQL `SELECT payload FROM "esp32/state"` and an action using that connector with body template `${payload}`. This forwards every state message the board publishes to the Worker.
+1. [EMQX Cloud](https://www.emqx.com/en/cloud) で Serverless タイプのデプロイメントを作成します。MQTT のホスト名と TLS ポート（`8883`）を控えておきます。
+2. **アクセス制御 → 認証** で、ESP32 用の MQTT ユーザー名・パスワードを作成します。
+3. デプロイメント概要画面で **デプロイメント API キー**（App ID + App Secret）を作成します。これは Worker がコマンドを HTTP API 経由でパブリッシュするために使用します。
+4. **データ統合** で、Worker の `/api/state/mqtt` エンドポイントを指す **HTTP サービス** コネクターを作成します（TLS を有効にし、共有シークレットトークンを含むカスタムヘッダーを設定）。続けて、SQL を `SELECT payload FROM "esp32/state"` としたルールを作成し、そのコネクターを使うアクション（Body テンプレートは `${payload}`）を設定します。これにより、ボードがパブリッシュする状態メッセージが Worker へ転送されます。
 
 ### 2. Cloudflare Worker
 
-1. Create a Cloudflare Worker (`wrangler deploy` from `cloudflare/`).
-2. Set `EMQX_API_BASE` and `EMQX_COMMAND_TOPIC` in `cloudflare/wrangler.toml` (`[vars]` — not secret, just configuration).
-3. Set these Worker secrets (`wrangler secret put <NAME>`, never commit them):
+1. Cloudflare Worker を作成します（`cloudflare/` ディレクトリで `wrangler deploy`）。
+2. `cloudflare/wrangler.toml` の `[vars]` に `EMQX_API_BASE` と `EMQX_COMMAND_TOPIC` を設定します（これらはシークレットではなく、単なる設定値です）。
+3. 以下の Worker シークレットを設定します（`wrangler secret put <NAME>`、ソース管理には絶対にコミットしないでください）：
 
    ```text
-   EMQX_API_KEY        = EMQX Cloud deployment API key (App ID)
-   EMQX_API_SECRET     = EMQX Cloud deployment API secret
-   EMQX_WEBHOOK_TOKEN  = a random token you choose; must match the header configured on the EMQX webhook
-   DASHBOARD_PIN       = private six-digit dashboard PIN
+   EMQX_API_KEY        = EMQX Cloud デプロイメントの API キー（App ID）
+   EMQX_API_SECRET     = EMQX Cloud デプロイメントの API シークレット
+   EMQX_WEBHOOK_TOKEN  = 任意のランダムなトークン（EMQX の Webhook に設定したヘッダーの値と一致させる）
+   DASHBOARD_PIN       = 非公開の 6 桁ダッシュボード PIN
    ```
 
-4. The Durable Object binding (`STATE` → `StateStore`) and its migration are already declared in `wrangler.toml`; no manual setup needed beyond deploying.
-5. Deploy: `wrangler deploy` from the `cloudflare/` directory.
+4. Durable Object のバインディング（`STATE` → `StateStore`）とそのマイグレーションは、すでに `wrangler.toml` に記載済みです。デプロイ以外の追加設定は不要です。
+5. デプロイ：`cloudflare/` ディレクトリで `wrangler deploy` を実行します。
 
-## Security notes
+## セキュリティに関する注意
 
-- Treat the Wi-Fi password, MQTT username/password, `EMQX_API_KEY`/`EMQX_API_SECRET`, `EMQX_WEBHOOK_TOKEN`, and `DASHBOARD_PIN` as private credentials.
-- Do not post them in screenshots, chat messages, or a public repository.
-- The firmware contains local Wi-Fi and MQTT credentials for this working setup — replace them with placeholders before sharing the project.
-- `/api/state` (live LED/servo/sound/sensor telemetry) is intentionally readable without the PIN; only `/api/command` (anything that controls the board) requires it.
-- Rotate the EMQX API key/MQTT password if either is ever exposed (e.g. pasted somewhere it shouldn't be).
-- Never expose the ESP32 directly with router port forwarding — it only makes outbound connections to Wi-Fi and the MQTT broker, which is the safer design.
+- Wi-Fi のパスワード、MQTT のユーザー名・パスワード、`EMQX_API_KEY`／`EMQX_API_SECRET`、`EMQX_WEBHOOK_TOKEN`、`DASHBOARD_PIN` はすべて非公開の認証情報として扱ってください。
+- これらをスクリーンショット、チャット、公開リポジトリに投稿しないでください。
+- 現在のファームウェアには、この動作環境用のローカルな Wi-Fi・MQTT 認証情報が含まれています。プロジェクトを共有する前に、プレースホルダーに置き換えてください。
+- `/api/state`（LED・サーボ・音・センサーのライブ情報）は意図的に PIN なしで読み取り可能にしています。ボードを操作できる `/api/command` のみ PIN が必要です。
+- EMQX の API キーや MQTT パスワードが誤って公開された場合は、速やかにローテーション（再発行）してください。
+- このプロジェクトでは ESP32 を直接ルーターのポート開放で公開しないでください。ESP32 は Wi-Fi と MQTT ブローカーへの発信接続のみを行う設計になっており、これがより安全な方式です。
 
-## Troubleshooting
+## トラブルシューティング
 
-### The LEDs stay blue
+### LED が青いまま変わらない
 
-The board is trying to connect to Wi-Fi. Confirm the network is on, is 2.4 GHz, and the name/password in `main.cpp` are correct. Press **RST** once after updating Wi-Fi settings.
+ボードが Wi-Fi への接続を試みている状態です。ネットワークが起動しているか、2.4 GHz であるか、`main.cpp` 内のネットワーク名・パスワードが正しいかを確認してください。Wi-Fi 設定を変更した後は、一度 **RST** ボタンを押してください。
 
-### The LEDs become purple
+### LED が紫になる
 
-Wi-Fi failed. Recheck the Wi-Fi settings and phone-hotspot compatibility mode.
+Wi-Fi への接続に失敗しています。Wi-Fi の設定と、スマートフォンテザリングの互換モードを再確認してください。
 
-### The LEDs become yellow
+### LED が黄色になる
 
-Wi-Fi is up but the board can't reach the MQTT broker. Check the `mqttHost`/`mqttUser`/`mqttPassword` values, that the EMQX deployment is running, and that the MQTT credential hasn't been disabled or changed in the EMQX console.
+Wi-Fi には接続できていますが、MQTT ブローカーに到達できていません。`mqttHost`／`mqttUser`／`mqttPassword` の値、EMQX デプロイメントが稼働しているか、EMQX コンソール上で MQTT の認証情報が無効化・変更されていないかを確認してください。
 
-### The dashboard shows "Offline" even though the board is connected
+### ボードは接続されているのにダッシュボードが「オフライン」と表示される
 
-Check the EMQX Rule Engine webhook (データ統合) — if its URL is misconfigured or the shared token doesn't match `EMQX_WEBHOOK_TOKEN`, state messages never reach the Worker's Durable Object, so the dashboard has nothing fresh to show even though the device itself is online.
+EMQX のルールエンジンの Webhook（データ統合）を確認してください。URL の設定が間違っていたり、共有トークンが `EMQX_WEBHOOK_TOKEN` と一致していない場合、状態メッセージが Worker の Durable Object に届かないため、デバイス自体はオンラインでもダッシュボードには最新情報が表示されません。
 
-### The buzzer makes noise unexpectedly
+### ブザーが意図せず鳴る
 
-The piezo speaker is on GPIO 21, driven via a dedicated PWM channel that only activates during a `sound`/`song` command. If it's buzzing outside of that, check for other code writing to GPIO 21 or its PWM channel.
+圧電スピーカーは GPIO 21 に接続されており、`sound`／`song` コマンドの実行中のみ有効になる専用の PWM チャンネルで駆動されています。それ以外のタイミングで鳴る場合は、GPIO 21 やその PWM チャンネルに書き込む他のコードがないか確認してください。
 
-## Main firmware behavior
+## ファームウェアの主な動作
 
-- State is published to MQTT roughly every 250 ms; the OLED sensor readout refreshes every 1 second (AHT21 sampling doesn't need to be faster than that).
-- Each command carries an ID so the board doesn't reapply the same (possibly retained) command twice.
-- Timed lighting and servo patterns use `millis()` and never block the MQTT/Wi-Fi loop.
-- Random mode runs independently, changing one LED every 500 ms.
-- The board starts with all LEDs off.
+- 状態はおよそ 250ms ごとに MQTT へパブリッシュされます。OLED のセンサー表示は 1 秒ごとに更新されます（AHT21 のサンプリングはこれ以上速くする必要はありません）。
+- 各コマンドには ID が付与されており、ボードは同じ（retain された）コマンドを重複して適用しません。
+- 時間指定の点灯やサーボパターンは `millis()` を使用しており、MQTT／Wi-Fi の処理をブロックしません。
+- ランダムモードは独立して動作し、500ms ごとに 1 個の LED の色を変更します。
+- 起動時はすべての LED が消灯した状態です。
 
-## References
+## 参考資料
 
-- [MicroFan ESP32-C3M-TRY documentation](https://www.microfan.jp/document/ESP32-C3M-TRY-R1-20230701.pdf)
-- [MicroFan ESP32-C3M-TRY MicroPython guide](https://www.microfan.jp/2023/08/esp32-c3m-try-micropython/)
-- [EMQX Cloud documentation](https://docs.emqx.com/en/cloud/latest/)
+- [MicroFan ESP32-C3M-TRY 取扱説明書](https://www.microfan.jp/document/ESP32-C3M-TRY-R1-20230701.pdf)
+- [MicroFan ESP32-C3M-TRY MicroPython ガイド](https://www.microfan.jp/2023/08/esp32-c3m-try-micropython/)
+- [EMQX Cloud ドキュメント](https://docs.emqx.com/en/cloud/latest/)
