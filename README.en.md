@@ -14,7 +14,9 @@ The board only needs USB for power after the firmware has been uploaded. The das
 - Servo control: direct angle (0–180°), a back-and-forth sweep pattern, and a hammer-style strike pattern.
 - Plays a custom tone or one of five built-in songs (with LEDs synced to the melody) through the piezo sounder.
 - Onboard SSD1306 OLED display shows live temperature/humidity (AHT21) and ambient brightness (phototransistor), independent of Wi-Fi/MQTT status.
+- A **Display tab** turns that OLED into a live notebook page: type text (with left/center/right alignment) and it mirrors onto the physical screen in real time, taking over from the sensor readout until cleared. What's currently on the screen is visible to anyone viewing the dashboard without the PIN — only changing it requires unlocking.
 - The web dashboard mirrors the board's live state (LED colors, servo angle, sound/song, sensor readings) in real time, without needing the PIN — only sending commands requires the PIN.
+- The status bar is honest about delivery: if the board is offline, sending a command shows "Queued — the device is offline" instead of falsely claiming "Sent" (it's still retained on the broker and will apply the moment the board reconnects).
 - Bilingual dashboard UI (English / Japanese, toggle in the top bar).
 - No router port forwarding, no public inbound ports on the ESP32 — it only makes outbound connections.
 
@@ -68,18 +70,20 @@ Because the ESP32 keeps a live MQTT session open, commands are applied within mi
 **Live state (board → dashboard):**
 
 ```text
-ESP32-C3M-TRY  ──publishes every ~250ms──▶  EMQX Cloud (topic: esp32/state)
-                                                   │  Rule Engine → Webhook
-                                                   ▼
-                                     Cloudflare Worker → Durable Object
-                                                   │  GET /api/state (no PIN needed)
-                                                   ▼
-                                              Dashboard (polls every ~400ms)
+ESP32-C3M-TRY  ──publishes on change (+5s heartbeat)──▶  EMQX Cloud (topic: esp32/state)
+                                                                 │  Rule Engine → Webhook
+                                                                 ▼
+                                                   Cloudflare Worker → Durable Object
+                                                                 │  GET /api/state (no PIN, 1s edge cache)
+                                                                 ▼
+                                                            Dashboard (polls every ~1.5s)
 ```
 
 The Durable Object exists because Cloudflare's plain edge cache is per-datacenter — without it, state published from EMQX Cloud's servers and read from a browser's nearest edge could land in different, unsynchronized caches. The Durable Object gives every request a single consistent source of truth.
 
-Live state is intentionally readable without the PIN (it's just telemetry — LED colors, servo angle, sound/song, sensor readings). The PIN only guards `/api/command`, so viewing the dashboard never requires unlocking anything, but nothing can be controlled without it.
+Live state is intentionally readable without the PIN (it's just telemetry — LED colors, servo angle, sound/song, sensor readings, and whatever text is currently on the OLED). The PIN only guards `/api/command`, so viewing the dashboard never requires unlocking anything, but nothing can be controlled without it.
+
+The board only publishes when something actually changes, plus a 5-second heartbeat while idle (so it doesn't look offline just because nothing happened). This matters because Durable Objects on Cloudflare's free plan carry a real daily quota — 100,000 requests/day, resetting at 00:00 UTC — and reporting on a fixed timer regardless of whether anything changed blew straight through it during development. A short 1-second edge cache in front of the Durable Object further absorbs repeated/concurrent dashboard polls.
 
 ## Open the dashboard
 
@@ -87,11 +91,12 @@ Open the deployed Worker URL in any browser. The live simulation bar and sensor 
 
 The dashboard provides:
 
+- **Display tab** (opens by default): a notebook-style block matching the OLED's 128:64 aspect ratio — type text with left/center/right alignment and it mirrors onto the physical screen live as you type (throttled, with a guaranteed flush on pause). "Keep" locks the text in; "Edit" unlocks it again. A separate read-only line above it always shows whatever is *currently* on the physical screen, visible without the PIN. Emoji show fine in this block but never reach the OLED — its font can only draw plain ASCII.
 - **Lights tab:** LED target (all / LED 1 / LED 2 / LED 3), a color wheel + vertical brightness slider for full-spectrum color, a duration slider for timed auto-off, "Random colors", and "Turn off".
 - **Servo tab:** direct angle control (0–180°) via a dial, a Sweep pattern (from/to angle, step size, speed, pass count), and a Strike pattern (low/high angle, speed, times).
 - **Sound tab:** a frequency/duration tone generator with quick presets (Beep, Alert, Chime).
 - **Songs tab:** five short buzzer melodies with LEDs synced to the tune (Perfect, Twinkle Twinkle Little Star, Happy Birthday, Für Elise, Super Mario Bros theme).
-- **Live simulation bar:** mirrors the board's actual LED colors, servo angle, and sound/song activity in real time; shows an "Offline" badge if the board hasn't reported in the last 1.5 seconds.
+- **Live simulation bar:** mirrors the board's actual LED colors, servo angle, and sound/song activity in real time; shows an "Offline" badge if the board hasn't reported in the last 7 seconds.
 - **Sensor bar:** live temperature, humidity, and brightness readings, with the same offline indicator.
 - **Language toggle:** switches the whole UI between English and Japanese.
 
@@ -197,13 +202,18 @@ Wi-Fi is up but the board can't reach the MQTT broker. Check the `mqttHost`/`mqt
 
 Check the EMQX Rule Engine webhook (データ統合) — if its URL is misconfigured or the shared token doesn't match `EMQX_WEBHOOK_TOKEN`, state messages never reach the Worker's Durable Object, so the dashboard has nothing fresh to show even though the device itself is online.
 
+### The dashboard fails entirely (a raw Cloudflare error page instead of loading)
+
+This most likely means the Durable Object's free-tier daily request quota has been exceeded (100,000 requests/day, resets at 00:00 UTC) — check the Worker's logs (`wrangler tail`) for `Exceeded allowed volume of requests in Durable Objects free tier`. The firmware's publish-on-change + heartbeat design and the dashboard's poll interval are both tuned to stay well under this in normal use, so it shouldn't recur; if it does, either wait for the daily reset or upgrade to Workers Paid ($5/month) for a much larger allowance.
+
 ### The buzzer makes noise unexpectedly
 
 The piezo speaker is on GPIO 21, driven via a dedicated PWM channel that only activates during a `sound`/`song` command. If it's buzzing outside of that, check for other code writing to GPIO 21 or its PWM channel.
 
 ## Main firmware behavior
 
-- State is published to MQTT roughly every 250 ms; the OLED sensor readout refreshes every 1 second (AHT21 sampling doesn't need to be faster than that).
+- State is published to MQTT only when something changes, plus a 5-second heartbeat while idle (see "How it works" above) — not on a fixed high-frequency timer.
+- The OLED sensor readout refreshes every 1 second (AHT21 sampling doesn't need to be faster than that), unless a Display-tab note is currently overriding it.
 - Each command carries an ID so the board doesn't reapply the same (possibly retained) command twice.
 - Timed lighting and servo patterns use `millis()` and never block the MQTT/Wi-Fi loop.
 - Random mode runs independently, changing one LED every 500 ms.

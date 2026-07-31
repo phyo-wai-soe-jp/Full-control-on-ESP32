@@ -51,7 +51,7 @@ export default {
       const body = await request.json();
       const allowed = new Set([
         "red", "green", "blue", "white", "random", "off", "set",
-        "servo", "servo_sweep", "servo_strike", "sound", "song",
+        "servo", "servo_sweep", "servo_strike", "sound", "song", "display_text",
       ]);
       if (!allowed.has(body.command)) return new Response("Bad command", { status: 400 });
       if (body.command === "set") {
@@ -91,6 +91,12 @@ export default {
         const songs = new Set(["perfect", "twinkle", "birthday", "fur_elise", "mario"]);
         if (!songs.has(body.name)) return new Response("Bad song name", { status: 400 });
       }
+      if (body.command === "display_text") {
+        const aligns = new Set(["left", "center", "right"]);
+        if (typeof body.text !== "string" || body.text.length > 200 || !aligns.has(body.align)) {
+          return new Response("Bad display settings", { status: 400 });
+        }
+      }
 
       // Retained so a rebooting/reconnecting ESP32 gets the last command the
       // moment it subscribes, without the Worker needing to track device state.
@@ -127,11 +133,23 @@ export default {
     // /api/command instead, so anyone can watch the live view but nobody can
     // act on it without the PIN.
     if (url.pathname === "/api/state" && request.method === "GET") {
+      // A short per-datacenter cache in front of the Durable Object. This
+      // isn't a correctness fix like the DO itself (staleness here is
+      // bounded to ~1s, fine for a dashboard already polling every 1.5s) —
+      // it exists purely to absorb repeat/concurrent polls from the same
+      // edge, since the DO's free-tier request volume is limited.
+      const cacheKey = new Request("https://state.internal/api/state");
+      const cached = await caches.default.match(cacheKey);
+      if (cached) return cached;
+
       const store = env.STATE.get(env.STATE.idFromName("global"));
       const stateRes = await store.fetch("https://state/");
-      return new Response(stateRes.body, {
-        headers: { "content-type": "application/json", "cache-control": "no-store" },
+      const body = await stateRes.text();
+      const response = new Response(body, {
+        headers: { "content-type": "application/json", "cache-control": "public, max-age=1" },
       });
+      await caches.default.put(cacheKey, response.clone());
+      return response;
     }
 
     // The static-assets binding only serves GET/HEAD; anything else that

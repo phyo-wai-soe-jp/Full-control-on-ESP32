@@ -38,6 +38,12 @@ float lastTemp = 0;
 float lastHum = 0;
 float lastLight = 0;
 
+// Custom text overrides the sensor readout on the OLED while active — set by
+// the Display tab's "display_text" command, cleared by sending empty text.
+bool noteActive = false;
+String noteText = "";
+String noteAlign = "left";
+
 // Packs an LED color the same way Adafruit_NeoPixel::Color() does, usable
 // in constexpr song tables built before the `leds` object is set up.
 #define RGB(r, g, b) (((uint32_t)(r) << 16) | ((uint32_t)(g) << 8) | (uint32_t)(b))
@@ -240,7 +246,35 @@ void connectMqtt() {
 
 // Reports the board's actual current state (LED colors, servo angle, what
 // is playing) so the control page can show a live status view instead of
-// just guessing from the last command it sent.
+// just guessing from the last command it sent. Checked on a fast timer but
+// only actually published when something changed, plus a periodic heartbeat
+// even when nothing has — the Cloudflare Durable Object behind this has a
+// limited free-tier request volume, and publishing unconditionally on every
+// tick (even while completely idle) blew through it. The heartbeat still
+// has to happen, though, or an idle-but-connected board would look offline
+// to the dashboard once its last report ages past OFFLINE_AFTER_MS there.
+String lastReportedPayload;
+unsigned long lastReportPublishAt = 0;
+constexpr unsigned long reportHeartbeatMs = 5000;
+
+// Escapes a String for embedding as a JSON string value — the counterpart to
+// jsonString()'s decoding below, needed because noteText is free-form (may
+// contain quotes/backslashes/newlines) unlike the other fields reported here.
+String jsonEscape(const String &value) {
+  String result;
+  result.reserve(value.length());
+  for (unsigned int i = 0; i < value.length(); i++) {
+    char c = value[i];
+    if (c == '"' || c == '\\') { result += '\\'; result += c; }
+    else if (c == '\n') result += "\\n";
+    else if (c == '\r') result += "\\r";
+    else if (c == '\t') result += "\\t";
+    else if ((uint8_t)c < 0x20) continue;  // drop other control chars
+    else result += c;
+  }
+  return result;
+}
+
 void reportState() {
   if (!mqttClient.connected()) return;
 
@@ -253,16 +287,76 @@ void reportState() {
   payload += "\"song\":" + (activeSongName ? ("\"" + String(activeSongName) + "\"") : String("null")) + ",";
   payload += "\"temp\":" + (ahtReady ? String(lastTemp, 1) : String("null")) + ",";
   payload += "\"hum\":" + (ahtReady ? String(lastHum, 1) : String("null")) + ",";
-  payload += "\"light\":" + String(lastLight, 3);
+  payload += "\"light\":" + String(lastLight, 3) + ",";
+  payload += "\"note\":" + (noteActive ? ("\"" + jsonEscape(noteText) + "\"") : String("null")) + ",";
+  payload += "\"noteAlign\":\"" + noteAlign + "\"";
   payload += "}";
 
+  bool changed = payload != lastReportedPayload;
+  bool heartbeatDue = millis() - lastReportPublishAt > reportHeartbeatMs;
+  if (!changed && !heartbeatDue) return;
+
+  lastReportedPayload = payload;
+  lastReportPublishAt = millis();
   mqttClient.publish(stateTopic, payload.c_str(), true);
+}
+
+// Renders noteText/noteAlign onto the OLED: splits on the user's own line
+// breaks, then word-wraps each paragraph to fit the display's fixed-width
+// font (6px advance, 8px line height at text size 1 => 21 cols x 8 rows),
+// applying the chosen alignment per rendered line. Overflow past 8 lines is
+// silently dropped rather than scrolled — this is a small status screen, not
+// a full text viewer.
+void renderNoteToDisplay() {
+  constexpr int charWidth = 6;
+  constexpr int charHeight = 8;
+  constexpr int maxCols = oledWidth / charWidth;
+  constexpr int maxRows = oledHeight / charHeight;
+
+  String lines[maxRows];
+  int lineCount = 0;
+  int paraStart = 0;
+  while (paraStart <= (int)noteText.length() && lineCount < maxRows) {
+    int paraEnd = noteText.indexOf('\n', paraStart);
+    if (paraEnd < 0) paraEnd = noteText.length();
+    String paragraph = noteText.substring(paraStart, paraEnd);
+
+    int pos = 0;
+    do {
+      int take = min((int)(paragraph.length() - pos), maxCols);
+      if (pos + take < (int)paragraph.length()) {
+        int lastSpace = paragraph.lastIndexOf(' ', pos + take);
+        if (lastSpace > pos) take = lastSpace - pos;
+      }
+      lines[lineCount++] = paragraph.substring(pos, pos + take);
+      pos += take;
+      while (pos < (int)paragraph.length() && paragraph[pos] == ' ') pos++;
+    } while (pos < (int)paragraph.length() && lineCount < maxRows);
+
+    paraStart = paraEnd + 1;
+  }
+
+  display.clearDisplay();
+  display.setTextSize(1);
+  display.setTextColor(SSD1306_WHITE);
+  for (int i = 0; i < lineCount; i++) {
+    int width = lines[i].length() * charWidth;
+    int x = 0;
+    if (noteAlign == "center") x = max(0, (oledWidth - width) / 2);
+    else if (noteAlign == "right") x = max(0, oledWidth - width);
+    display.setCursor(x, i * charHeight);
+    display.print(lines[i]);
+  }
+  display.display();
 }
 
 // Shows temperature/humidity (AHT21) and ambient brightness (phototransistor)
 // on the onboard OLED, turning the board into a standalone environment
-// monitor independent of the Wi-Fi/dashboard/MQTT side of things.
+// monitor independent of the Wi-Fi/dashboard/MQTT side of things. Skipped
+// while a Display-tab note is active — that has taken over the screen.
 void updateSensorDisplay() {
+  if (noteActive) return;
+
   display.clearDisplay();
   display.setCursor(0, 0);
 
@@ -282,13 +376,33 @@ void updateSensorDisplay() {
   display.display();
 }
 
+// Handles JSON escape sequences (\", \\, \n, \t, \r) so free-form text (the
+// OLED note) survives round-tripping through quotes/newlines intact. Other
+// callers only ever pass short identifier-like strings, so this is a
+// deliberately small subset of full JSON string decoding, not a general parser.
 String jsonString(const String &body, const String &name) {
   String marker = "\"" + name + "\":\"";
   int start = body.indexOf(marker);
   if (start < 0) return "";
   start += marker.length();
-  int end = body.indexOf('"', start);
-  return end > start ? body.substring(start, end) : "";
+
+  String result;
+  int i = start;
+  while (i < body.length() && body[i] != '"') {
+    if (body[i] == '\\' && i + 1 < body.length()) {
+      i++;
+      switch (body[i]) {
+        case 'n': result += '\n'; break;
+        case 't': result += '\t'; break;
+        case 'r': result += '\r'; break;
+        default: result += body[i]; break;  // \" \\ \/ etc. collapse to the literal char
+      }
+    } else {
+      result += body[i];
+    }
+    i++;
+  }
+  return result;
 }
 
 long jsonNumber(const String &body, const String &name, long fallback = 0) {
@@ -449,6 +563,15 @@ void applyRemoteCommand(const String &body) {
   }
   if (currentCommand == "song") {
     startSong(jsonString(body, "name").c_str());
+    return;
+  }
+  if (currentCommand == "display_text") {
+    noteText = jsonString(body, "text");
+    String align = jsonString(body, "align");
+    noteAlign = (align == "center" || align == "right") ? align : "left";
+    noteActive = noteText.length() > 0;
+    if (noteActive) renderNoteToDisplay();
+    else updateSensorDisplay();  // empty text means "clear" — revert immediately
     return;
   }
   if (currentCommand != "set") {

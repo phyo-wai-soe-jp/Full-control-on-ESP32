@@ -70,14 +70,60 @@
       </header>
 
       <nav class="tabs" role="tablist" aria-label="Control sections">
-        <button class="tab active" data-tab="lights" role="tab" aria-selected="true" data-i18n="tabs.lights">Lights</button>
+        <button class="tab active" data-tab="display" role="tab" aria-selected="true" data-i18n="tabs.display">Display</button>
+        <button class="tab" data-tab="lights" role="tab" aria-selected="false" data-i18n="tabs.lights">Lights</button>
         <button class="tab" data-tab="servo" role="tab" aria-selected="false" data-i18n="tabs.servo">Servo</button>
         <button class="tab" data-tab="sound" role="tab" aria-selected="false" data-i18n="tabs.sound">Sound</button>
         <button class="tab" data-tab="songs" role="tab" aria-selected="false" data-i18n="tabs.songs">Songs</button>
       </nav>
 
       <main>
-        <section class="panel active" data-panel="lights">
+        <section class="panel active" data-panel="display">
+          <div class="card">
+            <h2 data-i18n="display.title">Display</h2>
+            <p class="oled-live-status" id="oled-live-status" hidden>
+              <span data-i18n="display.currentlyShowing">Currently on the screen:</span>
+              <span id="oled-live-text" class="oled-live-text"></span>
+            </p>
+            <div class="oled-preview-wrap">
+              <textarea id="oled-note" class="oled-preview" maxlength="200" data-i18n-placeholder="display.placeholder" placeholder="Write something…"></textarea>
+            </div>
+            <div class="align-segmented" id="oled-align" role="group" aria-label="Text alignment">
+              <button class="align-option active" data-align="left" data-i18n-title="display.left" title="Left" aria-label="Left" aria-pressed="true">
+                <svg class="align-icon" viewBox="0 0 20 14" aria-hidden="true">
+                  <rect x="0" y="0" width="20" height="2.4" rx="1.2"/>
+                  <rect x="0" y="5.8" width="13" height="2.4" rx="1.2"/>
+                  <rect x="0" y="11.6" width="16" height="2.4" rx="1.2"/>
+                </svg>
+              </button>
+              <button class="align-option" data-align="center" data-i18n-title="display.center" title="Center" aria-label="Center" aria-pressed="false">
+                <svg class="align-icon" viewBox="0 0 20 14" aria-hidden="true">
+                  <rect x="0" y="0" width="20" height="2.4" rx="1.2"/>
+                  <rect x="3.5" y="5.8" width="13" height="2.4" rx="1.2"/>
+                  <rect x="2" y="11.6" width="16" height="2.4" rx="1.2"/>
+                </svg>
+              </button>
+              <button class="align-option" data-align="right" data-i18n-title="display.right" title="Right" aria-label="Right" aria-pressed="false">
+                <svg class="align-icon" viewBox="0 0 20 14" aria-hidden="true">
+                  <rect x="0" y="0" width="20" height="2.4" rx="1.2"/>
+                  <rect x="7" y="5.8" width="13" height="2.4" rx="1.2"/>
+                  <rect x="4" y="11.6" width="16" height="2.4" rx="1.2"/>
+                </svg>
+              </button>
+            </div>
+            <div class="oled-actions">
+              <button class="btn btn--primary" id="oled-keep">
+                <span aria-hidden="true">✓</span> <span data-i18n="display.keep">Keep</span>
+              </button>
+              <button class="btn btn--ghost" id="oled-edit">
+                <span aria-hidden="true">✎</span> <span data-i18n="display.edit">Edit</span>
+              </button>
+            </div>
+            <p class="hint" data-i18n="display.hint">Updates the physical OLED live as you type. Emoji show here but the board's screen can only draw plain text.</p>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="lights" hidden>
           <div class="card">
             <h2 data-i18n="lights.target">Target</h2>
             <div class="segmented" id="led-target">

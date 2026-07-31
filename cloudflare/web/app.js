@@ -3,7 +3,7 @@ const translations = {
   ja: {
     eyebrow: "リモート操作",
     title: "ESP32 パネル",
-    tabs: { lights: "ライト", servo: "サーボ", sound: "サウンド", songs: "曲" },
+    tabs: { display: "ディスプレイ", lights: "ライト", servo: "サーボ", sound: "サウンド", songs: "曲" },
     status: {
       idle: "準備完了",
       sending: "送信中…",
@@ -12,6 +12,7 @@ const translations = {
       networkError: "通信エラー",
       serverError: "サーバーエラー。しばらくして再試行してください",
       offlineBadge: "オフライン",
+      queuedOffline: "保留中 — デバイスがオフラインです",
     },
     sensors: {
       temp: "気温:",
@@ -27,6 +28,18 @@ const translations = {
       servo_strike: "打撃開始",
       sound: "音を再生",
       song: "曲を再生",
+      display_text: "ディスプレイを更新",
+    },
+    display: {
+      title: "ディスプレイ",
+      placeholder: "何か書いてください…",
+      left: "左揃え",
+      center: "中央揃え",
+      right: "右揃え",
+      keep: "確定",
+      edit: "編集",
+      currentlyShowing: "現在の画面表示:",
+      hint: "入力するとリアルタイムで実機の OLED に表示されます。絵文字はここでは表示されますが、実機の画面は文字のみ描画できます。",
     },
     lights: {
       target: "対象",
@@ -90,7 +103,7 @@ const translations = {
   en: {
     eyebrow: "Remote control",
     title: "ESP32 Panel",
-    tabs: { lights: "Lights", servo: "Servo", sound: "Sound", songs: "Songs" },
+    tabs: { display: "Display", lights: "Lights", servo: "Servo", sound: "Sound", songs: "Songs" },
     status: {
       idle: "Ready",
       sending: "Sending…",
@@ -99,6 +112,7 @@ const translations = {
       networkError: "Network error",
       serverError: "Server error, try again shortly",
       offlineBadge: "Offline",
+      queuedOffline: "Queued — the device is offline",
     },
     sensors: {
       temp: "Temp:",
@@ -114,6 +128,18 @@ const translations = {
       servo_strike: "Strike started",
       sound: "Sound played",
       song: "Song playing",
+      display_text: "Display updated",
+    },
+    display: {
+      title: "Display",
+      placeholder: "Write something…",
+      left: "Left",
+      center: "Center",
+      right: "Right",
+      keep: "Keep",
+      edit: "Edit",
+      currentlyShowing: "Currently on the screen:",
+      hint: "Updates the physical OLED live as you type. Emoji show here but the board's screen can only draw plain text.",
     },
     lights: {
       target: "Target",
@@ -235,7 +261,7 @@ function setStatus(state, text) {
   clearTimeout(statusResetTimer);
   statusEl.className = `status status--${state}`;
   statusText.textContent = text;
-  if (state === "success") {
+  if (state === "success" || state === "warning") {
     statusResetTimer = setTimeout(() => {
       statusEl.className = "status status--idle";
       statusText.textContent = t.status.idle;
@@ -273,6 +299,13 @@ function askForPin() {
   return pendingPinRequest;
 }
 
+// Tracked live from the same recency check that drives the livebar/sensorbar
+// "Offline" badge (see renderLiveState below) — a 200 from /api/command only
+// means the Worker accepted and retained the command on the broker, not that
+// the board actually applied it, so the status text shouldn't claim "Sent"
+// when we already know the board hasn't reported in a while.
+let deviceOnline = false;
+
 async function send(command, settings = {}) {
   try {
     if (!pin) {
@@ -292,8 +325,12 @@ async function send(command, settings = {}) {
       body: JSON.stringify({ command, ...settings }),
     });
 
-    if (response.ok) {
+    if (response.ok && deviceOnline) {
       setStatus("success", `${t.status.sentPrefix}${t.commandLabel[command] || command}`);
+    } else if (response.ok) {
+      // Still retained on the broker, so it'll apply the moment the board
+      // reconnects — just not delivered right now.
+      setStatus("warning", t.status.queuedOffline);
     } else if (response.status === 401) {
       // Only a real auth rejection means the PIN itself was wrong — any
       // other failure (e.g. a 500) has nothing to do with the PIN and
@@ -356,6 +393,14 @@ function applyLanguage() {
     const value = t_(el.dataset.i18n);
     if (typeof value === "string") el.textContent = value;
   });
+  document.querySelectorAll("[data-i18n-placeholder]").forEach((el) => {
+    const value = t_(el.dataset.i18nPlaceholder);
+    if (typeof value === "string") el.placeholder = value;
+  });
+  document.querySelectorAll("[data-i18n-title]").forEach((el) => {
+    const value = t_(el.dataset.i18nTitle);
+    if (typeof value === "string") { el.title = value; el.setAttribute("aria-label", value); }
+  });
   if (statusEl.classList.contains("status--idle")) statusText.textContent = t.status.idle;
   rangeBindings.forEach((update) => update());
 }
@@ -403,6 +448,65 @@ function bindDualRange(lowId, highId, fillId) {
   update();
   return { low, high };
 }
+
+// --- Display tab -----------------------------------------------------------
+// A live "notebook page" mirrored onto the board's physical OLED as you type.
+// The board's font can only draw plain ASCII, so emoji show here but never
+// reach the screen itself (the firmware just skips characters it can't draw).
+const oledNote = document.querySelector("#oled-note");
+const oledAlignButtons = document.querySelectorAll("#oled-align .align-option");
+const oledKeepBtn = document.querySelector("#oled-keep");
+const oledEditBtn = document.querySelector("#oled-edit");
+
+let oledAlign = localStorage.oledAlign || "left";
+oledNote.value = localStorage.oledNote || "";
+oledNote.style.textAlign = oledAlign;
+oledAlignButtons.forEach((b) => b.classList.toggle("active", b.dataset.align === oledAlign));
+oledEditBtn.disabled = true; // starts unlocked for editing already
+
+// Continuous typing would otherwise send a command per keystroke; throttle
+// mid-typing sends and always flush the latest text on blur/Keep so nothing
+// typed is ever silently lost.
+let lastOledSendAt = 0;
+function sendOledNote(immediate = false) {
+  const now = Date.now();
+  if (!immediate && now - lastOledSendAt < 300) return;
+  lastOledSendAt = now;
+  send("display_text", { text: oledNote.value, align: oledAlign });
+}
+
+oledNote.addEventListener("input", () => {
+  localStorage.oledNote = oledNote.value;
+  sendOledNote();
+});
+oledNote.addEventListener("blur", () => sendOledNote(true));
+
+oledAlignButtons.forEach((button) => {
+  button.addEventListener("click", () => {
+    oledAlign = button.dataset.align;
+    localStorage.oledAlign = oledAlign;
+    oledNote.style.textAlign = oledAlign;
+    oledAlignButtons.forEach((b) => {
+      b.classList.toggle("active", b === button);
+      b.setAttribute("aria-pressed", b === button ? "true" : "false");
+    });
+    sendOledNote(true);
+  });
+});
+
+oledKeepBtn.addEventListener("click", () => {
+  sendOledNote(true);
+  oledNote.disabled = true;
+  oledKeepBtn.disabled = true;
+  oledEditBtn.disabled = false;
+});
+
+oledEditBtn.addEventListener("click", () => {
+  oledNote.disabled = false;
+  oledNote.focus();
+  oledKeepBtn.disabled = false;
+  oledEditBtn.disabled = true;
+});
 
 // --- Lights tab ----------------------------------------------------------
 let selectedLed = -1;
@@ -739,9 +843,12 @@ const sensorOfflineBadge = document.querySelector("#sensor-offline-badge");
 const sensorTempEl = document.querySelector("#sensor-temp");
 const sensorHumEl = document.querySelector("#sensor-hum");
 const sensorLightEl = document.querySelector("#sensor-light");
-// The board reports its state roughly every 250ms; a few missed cycles
-// past that means it's genuinely offline, not just poll jitter.
-const OFFLINE_AFTER_MS = 1500;
+const oledLiveStatus = document.querySelector("#oled-live-status");
+const oledLiveText = document.querySelector("#oled-live-text");
+// The board only publishes on change now, plus a 5s heartbeat while idle (see
+// reportHeartbeatMs in main.cpp) — this must stay comfortably above that or
+// an idle-but-connected board would flicker "offline" between heartbeats.
+const OFFLINE_AFTER_MS = 7000;
 
 function colorFromPacked(value) {
   const r = (value >> 16) & 255;
@@ -752,6 +859,7 @@ function colorFromPacked(value) {
 
 function renderLiveState(state) {
   const online = typeof state.updatedAt === "number" && Date.now() - state.updatedAt < OFFLINE_AFTER_MS;
+  deviceOnline = online;
   livebarEl.classList.toggle("is-offline", !online);
   offlineBadge.hidden = online;
   sensorbarEl.classList.toggle("is-offline", !online);
@@ -779,6 +887,12 @@ function renderLiveState(state) {
   sensorTempEl.textContent = typeof state.temp === "number" ? `${state.temp.toFixed(1)}°C` : "--";
   sensorHumEl.textContent = typeof state.hum === "number" ? `${state.hum.toFixed(1)}%` : "--";
   sensorLightEl.textContent = typeof state.light === "number" ? state.light.toFixed(3) : "--";
+
+  // No PIN needed to read this either — it's just what's already visibly on
+  // the physical screen, not a control surface.
+  oledLiveStatus.hidden = typeof state.note !== "string" || state.note.length === 0;
+  oledLiveText.textContent = oledLiveStatus.hidden ? "" : state.note;
+  oledLiveText.style.textAlign = state.noteAlign || "left";
 }
 
 // No PIN needed — this is read-only telemetry, so the live view works
@@ -793,7 +907,7 @@ async function pollState() {
   }
 }
 
-setInterval(pollState, 400);
+setInterval(pollState, 1500);
 pollState();
 
 // --- Initial render --------------------------------------------------------
