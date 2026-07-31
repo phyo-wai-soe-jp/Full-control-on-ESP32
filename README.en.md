@@ -6,6 +6,12 @@ Remote control and live environment monitoring for a **MicroFan ESP32-C3M-TRY (4
 
 The board only needs USB for power after the firmware has been uploaded. The dashboard can be opened on a phone or computer from anywhere with Internet access — no router port forwarding required.
 
+## Demo video
+
+<video src="media/suriyos-demo-video.mp4" controls width="100%"></video>
+
+(If it doesn't play inline, open [media/suriyos-demo-video.mp4](media/suriyos-demo-video.mp4) directly.)
+
 ## What this project does
 
 - Connects the ESP32-C3M-TRY to a 2.4 GHz Wi-Fi network and to an EMQX Cloud MQTT broker over TLS.

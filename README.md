@@ -6,6 +6,12 @@
 
 ファームウェアの書き込み後は、ボードは電源供給に USB があれば十分です。ダッシュボードはインターネットに接続されたスマートフォンや PC からどこからでも開くことができます。ルーターのポート開放は不要です。
 
+## デモ動画
+
+<video src="media/suriyos-demo-video.mp4" controls width="100%"></video>
+
+（再生されない場合は [media/suriyos-demo-video.mp4](media/suriyos-demo-video.mp4) を直接開いてください）
+
 ## このプロジェクトができること
 
 - ESP32-C3M-TRY を 2.4 GHz の Wi-Fi ネットワークに接続し、TLS 経由で EMQX Cloud の MQTT ブローカーに接続します。
