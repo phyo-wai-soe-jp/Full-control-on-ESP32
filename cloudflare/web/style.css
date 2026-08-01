@@ -588,3 +588,25 @@ dialog h2 { margin-top: 0; }
 .dialog-actions { margin-top: 14px; }
 
 small { color: var(--text-dim); font-weight: 400; }
+
+/* ── Responsive ──
+   The layout is already fluid (max-width + clamp()) down to phone widths,
+   but two spots assumed enough horizontal room that they never actually
+   had on a narrow screen: the color-picker row has two fixed-width children
+   (brightness slider, action buttons) that don't shrink, so the wheel
+   between them just got squeezed toward nothing instead of the row
+   wrapping; and five/four-column tab-style grids get tight enough for
+   longer labels to truncate via ellipsis rather than just fitting. */
+@media (max-width: 420px) {
+  .tab { font-size: .76rem; padding: 9px 3px; }
+  .segmented-option { font-size: .78rem; padding: 10px 3px; }
+
+  .color-picker-row { flex-wrap: wrap; }
+  .color-wheel-wrap { flex: 1 1 180px; }
+  .color-actions {
+    flex: 1 1 100%;
+    flex-direction: row;
+    width: auto;
+  }
+  .color-actions .btn { flex: 1; }
+}
