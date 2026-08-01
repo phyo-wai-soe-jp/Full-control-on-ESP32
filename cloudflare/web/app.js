@@ -3,7 +3,7 @@ const translations = {
   ja: {
     eyebrow: "リモート操作",
     title: "ESP32 パネル",
-    tabs: { display: "ディスプレイ", lights: "ライト", servo: "サーボ", sound: "サウンド", songs: "曲" },
+    tabs: { display: "ディスプレイ", lights: "ライト", servo: "サーボ", sound: "サウンド", songs: "曲", history: "履歴" },
     status: {
       idle: "準備完了",
       sending: "送信中…",
@@ -94,6 +94,10 @@ const translations = {
     songs: {
       hint: "各曲は短いブザーのメロディーと、それに合わせたLEDの点灯を再生します。",
     },
+    history: {
+      title: "コマンド履歴",
+      empty: "まだコマンドは送信されていません。",
+    },
     pin: {
       title: "PINを入力",
       hint: "6桁のダッシュボードPIN。このブラウザタブにのみ保存されます。",
@@ -103,7 +107,7 @@ const translations = {
   en: {
     eyebrow: "Remote control",
     title: "ESP32 Panel",
-    tabs: { display: "Display", lights: "Lights", servo: "Servo", sound: "Sound", songs: "Songs" },
+    tabs: { display: "Display", lights: "Lights", servo: "Servo", sound: "Sound", songs: "Songs", history: "History" },
     status: {
       idle: "Ready",
       sending: "Sending…",
@@ -193,6 +197,10 @@ const translations = {
     },
     songs: {
       hint: "Each plays a short buzzer melody with LEDs synced to it.",
+    },
+    history: {
+      title: "Command History",
+      empty: "No commands sent yet.",
     },
     pin: {
       title: "Enter PIN",
@@ -403,6 +411,7 @@ function applyLanguage() {
   });
   if (statusEl.classList.contains("status--idle")) statusText.textContent = t.status.idle;
   rangeBindings.forEach((update) => update());
+  renderCommandLog(lastLog);
 }
 
 function setLanguage(next) {
@@ -909,6 +918,86 @@ async function pollState() {
 
 setInterval(pollState, 1500);
 pollState();
+
+// --- Command history tab --------------------------------------------------
+// Same read-only rationale as pollState: this is just a record of what was
+// sent and when, so it's visible without unlocking the PIN.
+const commandLogList = document.querySelector("#command-log-list");
+const songTitlesForLog = songTitles; // reuse the same map as the live-state song name
+
+// Turns a raw logged command into a short human label, adding whatever
+// detail is most useful to skim at a glance (color swatch isn't practical in
+// plain text, so lean on the numbers/name that identify the command).
+function describeLogEntry(entry) {
+  const base = t.commandLabel[entry.command] || entry.command;
+  switch (entry.command) {
+    case "set": {
+      const target = entry.led === -1 ? t.lights.all : `LED ${Number(entry.led) + 1}`;
+      return `${base} (${target}, rgb ${entry.r}, ${entry.g}, ${entry.b})`;
+    }
+    case "servo":
+      return `${base} (${entry.angle}°)`;
+    case "servo_sweep":
+      return `${base} (${entry.from}°→${entry.to}°)`;
+    case "servo_strike":
+      return `${base} (${entry.low}°↔${entry.high}°)`;
+    case "sound":
+      return `${base} (${entry.frequency} Hz, ${entry.duration} ms)`;
+    case "song":
+      return `${base}: ${songTitlesForLog[entry.name] || entry.name}`;
+    case "display_text":
+      return entry.text ? `${base}: "${entry.text.slice(0, 40)}${entry.text.length > 40 ? "…" : ""}"` : base;
+    default:
+      return base;
+  }
+}
+
+// Relative for anything recent (the common case on a personal dashboard),
+// falling back to a real time once it's far enough back that "37m ago"
+// stops being more useful than the clock time.
+function formatLogTime(ts) {
+  const diffSec = Math.round((Date.now() - ts) / 1000);
+  if (diffSec < 5) return lang === "ja" ? "たった今" : "just now";
+  if (diffSec < 60) return lang === "ja" ? `${diffSec}秒前` : `${diffSec}s ago`;
+  const diffMin = Math.round(diffSec / 60);
+  if (diffMin < 60) return lang === "ja" ? `${diffMin}分前` : `${diffMin}m ago`;
+  const diffHour = Math.round(diffMin / 60);
+  if (diffHour < 24) return lang === "ja" ? `${diffHour}時間前` : `${diffHour}h ago`;
+  return new Date(ts).toLocaleString(lang === "ja" ? "ja-JP" : "en-US", {
+    month: "short", day: "numeric", hour: "2-digit", minute: "2-digit",
+  });
+}
+
+let lastLog = [];
+function renderCommandLog(log) {
+  lastLog = log;
+  commandLogList.innerHTML = "";
+  log.forEach((entry) => {
+    const li = document.createElement("li");
+    li.className = "log-item";
+    const label = document.createElement("span");
+    label.className = "log-item-label";
+    label.textContent = describeLogEntry(entry);
+    const time = document.createElement("span");
+    time.className = "log-item-time";
+    time.textContent = formatLogTime(entry.ts);
+    li.append(label, time);
+    commandLogList.append(li);
+  });
+}
+
+async function pollCommandLog() {
+  try {
+    const response = await fetch("/api/command-log");
+    if (!response.ok) return;
+    renderCommandLog(await response.json());
+  } catch {
+    // transient network hiccup — keep showing the last known log
+  }
+}
+
+setInterval(pollCommandLog, 8000);
+pollCommandLog();
 
 // --- Initial render --------------------------------------------------------
 applyLanguage();

@@ -75,6 +75,7 @@
         <button class="tab" data-tab="servo" role="tab" aria-selected="false" data-i18n="tabs.servo">Servo</button>
         <button class="tab" data-tab="sound" role="tab" aria-selected="false" data-i18n="tabs.sound">Sound</button>
         <button class="tab" data-tab="songs" role="tab" aria-selected="false" data-i18n="tabs.songs">Songs</button>
+        <button class="tab" data-tab="history" role="tab" aria-selected="false" data-i18n="tabs.history">History</button>
       </nav>
 
       <main>
@@ -282,6 +283,14 @@
               <span class="song-play" aria-hidden="true">&#9654;</span>
             </button>
             <small class="hint" data-i18n="songs.hint">Each plays a short buzzer melody with LEDs synced to it.</small>
+          </div>
+        </section>
+
+        <section class="panel" data-panel="history" hidden>
+          <div class="card">
+            <h2 data-i18n="history.title">Command History</h2>
+            <ul id="command-log-list" class="log-list"></ul>
+            <p class="hint" id="log-empty" data-i18n="history.empty">No commands sent yet.</p>
           </div>
         </section>
       </main>

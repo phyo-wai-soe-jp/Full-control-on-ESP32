@@ -22,13 +22,33 @@ const DEFAULT_STATE = '{"led0":0,"led1":0,"led2":0,"servoAngle":90,"sound":false
 // here — that cache is per-datacenter, and the EMQX webhook (posting from
 // wherever EMQX Cloud is) and the dashboard (reading from the browser's
 // nearest edge) almost never land on the same datacenter.
+const COMMAND_LOG_LIMIT = 30;
+
 export class StateStore {
   constructor(ctx) {
     this.ctx = ctx;
     this.current = null;
+    this.log = null;
   }
 
   async fetch(request) {
+    const url = new URL(request.url);
+
+    // Command history: same Durable Object as the live state, just a
+    // second storage key — no need for a whole separate DO class for
+    // 30 small JSON entries.
+    if (url.pathname === "/log") {
+      if (this.log === null) {
+        this.log = (await this.ctx.storage.get("log")) || [];
+      }
+      if (request.method === "POST") {
+        const entry = await request.json();
+        this.log = [entry, ...this.log].slice(0, COMMAND_LOG_LIMIT);
+        await this.ctx.storage.put("log", this.log);
+      }
+      return Response.json(this.log);
+    }
+
     if (this.current === null) {
       this.current = (await this.ctx.storage.get("state")) || DEFAULT_STATE;
     }
@@ -102,6 +122,16 @@ export default {
       // moment it subscribes, without the Worker needing to track device state.
       await publishToEmqx(env, env.EMQX_COMMAND_TOPIC, { ...body, id: Date.now() % 1000000000 },
         { qos: 1, retain: true });
+
+      // Logged even if the board turns out to be offline right now — the
+      // command was still accepted and retained, and will apply on
+      // reconnect, so it belongs in the history either way.
+      const store = env.STATE.get(env.STATE.idFromName("global"));
+      await store.fetch("https://state/log", {
+        method: "POST",
+        body: JSON.stringify({ ...body, ts: Date.now() }),
+      });
+
       return Response.json({ ok: true });
     }
 
@@ -147,6 +177,23 @@ export default {
       const body = await stateRes.text();
       const response = new Response(body, {
         headers: { "content-type": "application/json", "cache-control": "public, max-age=1" },
+      });
+      await caches.default.put(cacheKey, response.clone());
+      return response;
+    }
+
+    // Same read-only rationale as /api/state above: this just shows what
+    // commands were sent and when, not a way to act on the board.
+    if (url.pathname === "/api/command-log" && request.method === "GET") {
+      const cacheKey = new Request("https://state.internal/api/command-log");
+      const cached = await caches.default.match(cacheKey);
+      if (cached) return cached;
+
+      const store = env.STATE.get(env.STATE.idFromName("global"));
+      const logRes = await store.fetch("https://state/log");
+      const body = await logRes.text();
+      const response = new Response(body, {
+        headers: { "content-type": "application/json", "cache-control": "public, max-age=2" },
       });
       await caches.default.put(cacheKey, response.clone());
       return response;
