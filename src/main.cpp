@@ -1,4 +1,9 @@
 #include <Arduino.h>
+
+// Wi-Fi and broker credentials: copy include/secrets.example.h to
+// include/secrets.h and fill it in. That file is gitignored.
+#include "secrets.h"
+
 #include <Adafruit_AHTX0.h>
 #include <Adafruit_GFX.h>
 #include <Adafruit_NeoPixel.h>
@@ -132,14 +137,9 @@ const Song songs[] = {
 };
 const int songCount = sizeof(songs) / sizeof(Song);
 
-const char *wifiName = "BFW6K-G-ED910";
-const char *wifiPassword = "ibpi4f2h5scf";
-
 const char *mqttHost = "c89d81bf.ala.asia-southeast1.emqxsl.com";
 const int mqttPort = 8883;
 const char *mqttClientId = "esp32-device";
-const char *mqttUser = "esp32-device";
-const char *mqttPassword = "phyo1500";
 const char *commandTopic = "esp32/command";
 const char *stateTopic = "esp32/state";
 
